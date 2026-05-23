@@ -2,19 +2,24 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { MongoClient, ServerApiVersion } from "mongodb";
+import jwt from "jsonwebtoken";
 
 dotenv.config();
 
 const app = express();
+const port = process.env.PORT || 5000;
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-const port = process.env.PORT || 5000;
+// Root Route
+app.get("/", (req, res) => {
+    res.send("eTuitionBd Server Running");
+});
 
-const mongoUri = process.env.MONGODB_URI;
-
-const client = new MongoClient(mongoUri, {
+// MongoDB
+const client = new MongoClient(process.env.MONGODB_URI, {
     serverApi: {
         version: ServerApiVersion.v1,
         strict: true,
@@ -22,21 +27,47 @@ const client = new MongoClient(mongoUri, {
     },
 });
 
+// JWT Middleware
+const verifyToken = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+        return res.status(401).send({
+            success: false,
+            message: "Unauthorized Access",
+        });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    jwt.verify(token, process.env.JWT_SECRET, (error, decoded) => {
+        if (error) {
+            return res.status(401).send({
+                success: false,
+                message: "Invalid Token",
+            });
+        }
+
+        req.decoded = decoded;
+        next();
+    });
+};
+
 async function run() {
     try {
         await client.connect();
-        console.log("Connected to MongoDB");
 
-        app.get("/", (req, res) => {
-            res.send("eTuitionBd Server Running");
+        await client.db("admin").command({
+            ping: 1,
         });
 
-        app.listen(port, () => {
-            console.log(`Server running on ${port}`);
-        });
+        console.log("MongoDB Connected Successfully");
 
         const usersCollection = client.db("etuitionbdDB").collection("users");
-        //  Create User API
+
+        // Users APIs
+
+        // Create User
         app.post("/users", async (req, res) => {
             const user = req.body;
 
@@ -45,18 +76,28 @@ async function run() {
             });
 
             if (existingUser) {
-                return res.send({
-                    message: "user exists",
+                return res.status(200).send({
+                    success: false,
+                    message: "User already exists",
                 });
             }
 
             const result = await usersCollection.insertOne(user);
 
+            res.status(201).send({
+                success: true,
+                result,
+            });
+        });
+
+        // Get All Users
+        app.get("/users", async (req, res) => {
+            const result = await usersCollection.find().toArray();
+
             res.send(result);
         });
 
-        // Get User by Email API
-
+        // Get User By Email
         app.get("/users/:email", async (req, res) => {
             const email = req.params.email;
 
@@ -66,21 +107,48 @@ async function run() {
 
             res.send(result);
         });
+
+        // Get User Role
+        app.get("/users/role/:email", async (req, res) => {
+            const email = req.params.email;
+
+            const user = await usersCollection.findOne({
+                email,
+            });
+
+            res.send({
+                role: user?.role || null,
+            });
+        });
+
+        // JWT API
+
+        app.post("/jwt", async (req, res) => {
+            const { email } = req.body;
+
+            const token = jwt.sign({ email }, process.env.JWT_SECRET, {
+                expiresIn: "7d",
+            });
+
+            res.send({ token });
+        });
+
+        // Protected Test Route
+
+        app.get("/private", verifyToken, async (req, res) => {
+            res.send({
+                success: true,
+                email: req.decoded.email,
+            });
+        });
     } catch (error) {
-        console.error("Failed to connect to MongoDB:", error);
-        process.exit(1);
+        console.error("MongoDB Connection Error:", error);
     }
 }
 
-run()
-    .then(() => {
-        app.listen(port, () => {
-            console.log(
-                `eTuitionBd Server is running on http://localhost:${port}`,
-            );
-        });
-    })
-    .catch((error) => {
-        console.error("Failed to start server:", error);
-        process.exit(1);
-    });
+run();
+
+// Start Server
+app.listen(port, () => {
+    console.log(`eTuitionBd Server Running on Port ${port}`);
+});
