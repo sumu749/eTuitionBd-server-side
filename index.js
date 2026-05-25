@@ -160,6 +160,25 @@ async function run() {
             res.send(result);
         });
 
+        // Update Tuition
+
+        app.patch("/tuitions/:id", verifyToken, async (req, res) => {
+            const id = req.params.id;
+
+            const updatedData = req.body;
+
+            const result = await tuitionsCollection.updateOne(
+                {
+                    _id: new ObjectId(id),
+                },
+                {
+                    $set: updatedData,
+                },
+            );
+
+            res.send(result);
+        });
+
         // JWT API
 
         app.post("/jwt", async (req, res) => {
