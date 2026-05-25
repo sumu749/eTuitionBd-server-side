@@ -130,6 +130,23 @@ async function run() {
             }
         });
 
+        // Get All Tuitions
+
+        app.get("/my-tuitions/:email", verifyToken, async (req, res) => {
+            const email = req.params.email;
+
+            const result = await tuitionsCollection
+                .find({
+                    studentEmail: email,
+                })
+                .sort({
+                    createdAt: -1,
+                })
+                .toArray();
+
+            res.send(result);
+        });
+
         // JWT API
 
         app.post("/jwt", async (req, res) => {
