@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import { MongoClient, ServerApiVersion } from "mongodb";
 import verifyFirebaseToken from "./middlewares/verifyFirebaseToken.js";
 import verifyToken from "./middlewares/verifyToken.js";
+import { ObjectId } from "mongodb";
 
 dotenv.config();
 
@@ -143,6 +144,18 @@ async function run() {
                     createdAt: -1,
                 })
                 .toArray();
+
+            res.send(result);
+        });
+
+        // Delete Tuition
+
+        app.delete("/tuitions/:id", verifyToken, async (req, res) => {
+            const id = req.params.id;
+
+            const result = await tuitionsCollection.deleteOne({
+                _id: new ObjectId(id),
+            });
 
             res.send(result);
         });
