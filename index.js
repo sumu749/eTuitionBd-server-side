@@ -52,6 +52,9 @@ async function run() {
         console.log("MongoDB Connected Successfully");
 
         const usersCollection = client.db("etuitionbdDB").collection("users");
+        const tuitionsCollection = client
+            .db("etuitionbdDB")
+            .collection("tuitions");
 
         // Users APIs
 
@@ -107,6 +110,24 @@ async function run() {
             res.send({
                 role: user?.role || null,
             });
+        });
+
+        // Tuitions APIs
+
+        // Create Tuition
+
+        app.post("/tuitions", verifyToken, async (req, res) => {
+            try {
+                const tuition = req.body;
+
+                const result = await tuitionsCollection.insertOne(tuition);
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({
+                    message: "Failed to create tuition",
+                });
+            }
         });
 
         // JWT API
