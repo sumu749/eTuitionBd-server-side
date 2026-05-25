@@ -1,2 +1,10 @@
+
+# Ignore Firebase configuration files
+firebase/*.json
+
+# Environment files
 .env
-verifyToken.js
+
+
+# Node modules
+node_modules/

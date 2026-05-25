@@ -1,13 +1,27 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { MongoClient, ServerApiVersion } from "mongodb";
 import jwt from "jsonwebtoken";
+import { MongoClient, ServerApiVersion } from "mongodb";
+import verifyFirebaseToken from "./middlewares/verifyFirebaseToken.js";
+import verifyToken from "./middlewares/verifyToken.js";
 
 dotenv.config();
 
+const decoded = Buffer.from(
+    process.env.FIREBASE_SERVICE_KEY,
+    "base64",
+).toString("utf8");
+const serviceAccount = JSON.parse(decoded);
+
 const app = express();
 const port = process.env.PORT || 5000;
+const dbName = process.env.DB_NAME || "etuitionbdDB";
+const mongoUri = process.env.MONGODB_URI;
+
+if (!mongoUri) {
+    throw new Error("MONGODB_URI is not defined in .env");
+}
 
 // Middleware
 app.use(cors());
@@ -19,39 +33,13 @@ app.get("/", (req, res) => {
 });
 
 // MongoDB
-const client = new MongoClient(process.env.MONGODB_URI, {
+const client = new MongoClient(mongoUri, {
     serverApi: {
         version: ServerApiVersion.v1,
         strict: true,
         deprecationErrors: true,
     },
 });
-
-// JWT Middleware
-const verifyToken = (req, res, next) => {
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader) {
-        return res.status(401).send({
-            success: false,
-            message: "Unauthorized Access",
-        });
-    }
-
-    const token = authHeader.split(" ")[1];
-
-    jwt.verify(token, process.env.JWT_SECRET, (error, decoded) => {
-        if (error) {
-            return res.status(401).send({
-                success: false,
-                message: "Invalid Token",
-            });
-        }
-
-        req.decoded = decoded;
-        next();
-    });
-};
 
 async function run() {
     try {
@@ -135,20 +123,30 @@ async function run() {
 
         // Protected Test Route
 
+        app.get("/firebase-private", verifyFirebaseToken, async (req, res) => {
+            res.send({
+                success: true,
+                email: req.decoded.email,
+            });
+        });
+
         app.get("/private", verifyToken, async (req, res) => {
             res.send({
                 success: true,
                 email: req.decoded.email,
             });
         });
+
+        app.listen(port, () => {
+            console.log(`eTuitionBd Server Running on Port ${port}`);
+        });
     } catch (error) {
         console.error("MongoDB Connection Error:", error);
+        process.exit(1);
     }
 }
 
-run();
-
-// Start Server
-app.listen(port, () => {
-    console.log(`eTuitionBd Server Running on Port ${port}`);
+run().catch((error) => {
+    console.error("Failed to start server:", error);
+    process.exit(1);
 });
