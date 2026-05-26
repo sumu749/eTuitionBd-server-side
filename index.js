@@ -262,6 +262,65 @@ async function run() {
             res.send(result);
         });
 
+        // Get Applications By Tutor Email
+
+        app.get("/tutor-applications/:email", verifyToken, async (req, res) => {
+            const email = req.params.email;
+
+            if (email !== req.decoded.email) {
+                return res.status(403).send({
+                    message: "Forbidden Access",
+                });
+            }
+
+            const result = await applicationsCollection
+                .find({
+                    tutorEmail: email,
+                })
+                .toArray();
+
+            res.send(result);
+        });
+
+        // Check If Tutor Has Already Applied For A Tuition
+
+        app.get("/check-application", verifyToken, async (req, res) => {
+            const { tuitionId, email } = req.query;
+
+            const existing = await applicationsCollection.findOne({
+                tuitionId,
+                tutorEmail: email,
+            });
+
+            res.send({
+                applied: !!existing,
+            });
+        });
+
+        // Delete Application
+
+        app.delete("/applications/:id", verifyToken, async (req, res) => {
+            const result = await applicationsCollection.deleteOne({
+                _id: new ObjectId(req.params.id),
+            });
+
+            res.send(result);
+        });
+
+        // Get Ongoing Tuitions for Tutor
+
+        app.get("/ongoing-tuitions/:email", verifyToken, async (req, res) => {
+            const email = req.params.email;
+
+            const result = await applicationsCollection
+                .find({
+                    tutorEmail: email,
+                    status: "approved",
+                })
+                .toArray();
+
+            res.send(result);
+        });
         // JWT API
 
         app.post("/jwt", async (req, res) => {
