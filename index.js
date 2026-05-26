@@ -56,6 +56,9 @@ async function run() {
         const tuitionsCollection = client
             .db("etuitionbdDB")
             .collection("tuitions");
+        const applicationsCollection = client
+            .db("etuitionbdDB")
+            .collection("applications");
 
         // Users APIs
 
@@ -232,6 +235,29 @@ async function run() {
                     },
                 },
             );
+
+            res.send(result);
+        });
+
+        // Get All Approved Tuitions
+
+        app.get("/tuitions", async (req, res) => {
+            const result = await tuitionsCollection
+                .find({ status: "approved" })
+                .sort({ createdAt: -1 })
+                .toArray();
+
+            res.send(result);
+        });
+
+        // Get Tuition By ID
+
+        app.get("/tuitions/:id", async (req, res) => {
+            const id = req.params.id;
+
+            const result = await tuitionsCollection.findOne({
+                _id: new ObjectId(id),
+            });
 
             res.send(result);
         });
