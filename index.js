@@ -215,6 +215,27 @@ async function run() {
             res.send(result);
         });
 
+        // Update Application Status
+
+        app.patch("/applications/:id", verifyToken, async (req, res) => {
+            const id = req.params.id;
+
+            const status = req.body.status;
+
+            const result = await applicationsCollection.updateOne(
+                {
+                    _id: new ObjectId(id),
+                },
+                {
+                    $set: {
+                        status,
+                    },
+                },
+            );
+
+            res.send(result);
+        });
+
         // JWT API
 
         app.post("/jwt", async (req, res) => {
