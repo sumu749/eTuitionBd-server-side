@@ -179,6 +179,42 @@ async function run() {
             res.send(result);
         });
 
+        // Applications APIs
+
+        app.post("/applications", verifyToken, async (req, res) => {
+            const application = req.body;
+
+            const existing = await applicationsCollection.findOne({
+                tuitionId: application.tuitionId,
+
+                tutorEmail: application.tutorEmail,
+            });
+
+            if (existing) {
+                return res.status(400).send({
+                    message: "Already Applied",
+                });
+            }
+
+            const result = await applicationsCollection.insertOne(application);
+
+            res.send(result);
+        });
+
+        // Get Applications By Student Email
+
+        app.get("/applications/:email", verifyToken, async (req, res) => {
+            const email = req.params.email;
+
+            const result = await applicationsCollection
+                .find({
+                    studentEmail: email,
+                })
+                .toArray();
+
+            res.send(result);
+        });
+
         // JWT API
 
         app.post("/jwt", async (req, res) => {
