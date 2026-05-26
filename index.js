@@ -53,6 +53,7 @@ async function run() {
         console.log("MongoDB Connected Successfully");
 
         const usersCollection = client.db("etuitionbdDB").collection("users");
+
         const tuitionsCollection = client
             .db("etuitionbdDB")
             .collection("tuitions");
@@ -241,10 +242,14 @@ async function run() {
 
         // Get All Approved Tuitions
 
-        app.get("/tuitions", async (req, res) => {
+        app.get("/approved-tuitions", async (req, res) => {
             const result = await tuitionsCollection
-                .find({ status: "approved" })
-                .sort({ createdAt: -1 })
+                .find({
+                    status: "approved",
+                })
+                .sort({
+                    createdAt: -1,
+                })
                 .toArray();
 
             res.send(result);
@@ -362,6 +367,27 @@ async function run() {
 
             res.send(result);
         });
+
+        // Admin Update Tuition Status
+
+        app.patch("/tuitions/status/:id", verifyToken, async (req, res) => {
+            const id = req.params.id;
+            const { status } = req.body;
+
+            const result = await tuitionsCollection.updateOne(
+                {
+                    _id: new ObjectId(id),
+                },
+                {
+                    $set: {
+                        status,
+                    },
+                },
+            );
+
+            res.send(result);
+        });
+
         // JWT API
 
         app.post("/jwt", async (req, res) => {
