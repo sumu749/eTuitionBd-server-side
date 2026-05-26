@@ -6,8 +6,16 @@ import { MongoClient, ServerApiVersion } from "mongodb";
 import verifyFirebaseToken from "./middlewares/verifyFirebaseToken.js";
 import verifyToken from "./middlewares/verifyToken.js";
 import { ObjectId } from "mongodb";
+import Stripe from "stripe";
 
 dotenv.config();
+
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+if (!stripeSecretKey) {
+    throw new Error("STRIPE_SECRET_KEY is not defined in .env");
+}
+
+const stripe = new Stripe(stripeSecretKey);
 
 const decoded = Buffer.from(
     process.env.FIREBASE_SERVICE_KEY,
@@ -57,9 +65,14 @@ async function run() {
         const tuitionsCollection = client
             .db("etuitionbdDB")
             .collection("tuitions");
+
         const applicationsCollection = client
             .db("etuitionbdDB")
             .collection("applications");
+
+        const transactionsCollection = client
+            .db("etuitionbdDB")
+            .collection("transactions");
 
         // Users APIs
 
@@ -201,6 +214,16 @@ async function run() {
             }
 
             const result = await applicationsCollection.insertOne(application);
+
+            res.send(result);
+        });
+
+        // Get Application By ID
+
+        app.get("/application/:id", verifyToken, async (req, res) => {
+            const result = await applicationsCollection.findOne({
+                _id: new ObjectId(req.params.id),
+            });
 
             res.send(result);
         });
@@ -432,6 +455,87 @@ async function run() {
             });
         });
 
+        // Get Payments By Student Email
+
+        app.get("/payments", verifyToken, async (req, res) => {
+            const email = req.query.email;
+
+            const result = await transactionsCollection
+                .find({
+                    studentEmail: email,
+                })
+                .sort({
+                    paymentDate: -1,
+                })
+                .toArray();
+
+            res.send(result);
+        });
+
+        // Create Payment Intent
+
+        app.post("/create-payment-intent", verifyToken, async (req, res) => {
+            const { amount } = req.body;
+
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: parseInt(amount * 100),
+                currency: "bdt",
+                payment_method_types: ["card"],
+            });
+
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            });
+        });
+
+        // Transactions APIs
+
+        app.get("/transactions", verifyToken, async (req, res) => {
+            const result = await transactionsCollection
+                .find()
+                .sort({
+                    paymentDate: -1,
+                })
+                .toArray();
+
+            res.send(result);
+        });
+
+        // Create Transaction
+
+        app.post("/transactions", verifyToken, async (req, res) => {
+            const result = await transactionsCollection.insertOne(req.body);
+
+            res.send(result);
+        });
+
+        // Get Transaction By ID
+
+        app.get("/transactions/:id", verifyToken, async (req, res) => {
+            const result = await transactionsCollection.findOne({
+                _id: new ObjectId(req.params.id),
+            });
+
+            res.send(result);
+        });
+
+        // Get Revenue By Tutor Email
+
+        app.get("/revenue/:email", verifyToken, async (req, res) => {
+            const email = req.params.email;
+
+            const result = await transactionsCollection
+                .find({
+                    tutorEmail: email,
+                    status: "completed",
+                })
+                .sort({
+                    paymentDate: -1,
+                })
+                .toArray();
+
+            res.send(result);
+        });
         // JWT API
 
         app.post("/jwt", async (req, res) => {
