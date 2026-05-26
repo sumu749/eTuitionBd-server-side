@@ -388,6 +388,50 @@ async function run() {
             res.send(result);
         });
 
+        // Admin Analytics
+
+        app.get("/admin-stats", verifyToken, async (req, res) => {
+            const totalUsers = await usersCollection.countDocuments();
+
+            const totalStudents = await usersCollection.countDocuments({
+                role: "student",
+            });
+
+            const totalTutors = await usersCollection.countDocuments({
+                role: "tutor",
+            });
+
+            const totalAdmins = await usersCollection.countDocuments({
+                role: "admin",
+            });
+
+            const totalTuitions = await tuitionsCollection.countDocuments();
+
+            const totalApplications =
+                await applicationsCollection.countDocuments();
+
+            const approvedApplications = await applicationsCollection
+                .find({
+                    status: "approved",
+                })
+                .toArray();
+
+            const totalRevenue = approvedApplications.reduce(
+                (sum, app) => sum + Number(app.expectedSalary || 0),
+                0,
+            );
+
+            res.send({
+                totalUsers,
+                totalStudents,
+                totalTutors,
+                totalAdmins,
+                totalTuitions,
+                totalApplications,
+                totalRevenue,
+            });
+        });
+
         // JWT API
 
         app.post("/jwt", async (req, res) => {
