@@ -321,6 +321,47 @@ async function run() {
 
             res.send(result);
         });
+
+        // Admin Update User Role
+
+        app.patch("/users/role/:id", verifyToken, async (req, res) => {
+            const id = req.params.id;
+            const role = req.body.role;
+
+            const result = await usersCollection.updateOne(
+                {
+                    _id: new ObjectId(id),
+                },
+                {
+                    $set: {
+                        role,
+                    },
+                },
+            );
+
+            res.send(result);
+        });
+
+        // Admin Delete User
+
+        app.delete("/users/:id", verifyToken, async (req, res) => {
+            const result = await usersCollection.deleteOne({
+                _id: new ObjectId(req.params.id),
+            });
+
+            res.send(result);
+        });
+
+        // Get All Tuitions (Admin)
+
+        app.get("/tuitions", verifyToken, async (req, res) => {
+            const result = await tuitionsCollection
+                .find()
+                .sort({ createdAt: -1 })
+                .toArray();
+
+            res.send(result);
+        });
         // JWT API
 
         app.post("/jwt", async (req, res) => {
