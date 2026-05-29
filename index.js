@@ -843,12 +843,16 @@ async function run() {
             });
         });
 
-        app.listen(port, () => {
-            console.log(`Server Running on Port ${port}`);
-        });
+        if (!process.env.VERCEL) {
+            app.listen(port, () => {
+                console.log(`Server Running on Port ${port}`);
+            });
+        }
     } catch (error) {
-        console.log(error);
+        console.error(error);
     }
 }
 
 run().catch(console.dir);
+
+export default app;

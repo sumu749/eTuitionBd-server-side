@@ -21,9 +21,9 @@ export async function connectToMongo() {
     try {
         await client.connect();
 
-        await client.db("admin").command({
-            ping: 1,
-        });
+        // await client.db("admin").command({
+        //     ping: 1,
+        // });
 
         console.log("MongoDB Connected Successfully (db.js)");
     } catch (error) {
