@@ -151,21 +151,6 @@ async function run() {
             }
         });
 
-        // Get Public Tutors
-
-        app.get("/public-tutors", async (req, res) => {
-            const limit = parseInt(req.query.limit) || 0;
-
-            const result = await usersCollection
-                .find({
-                    role: "tutor",
-                })
-                .limit(limit)
-                .toArray();
-
-            res.send(result);
-        });
-
         // Get User By Email
         app.get("/users/:email", async (req, res) => {
             try {
