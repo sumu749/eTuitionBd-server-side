@@ -254,7 +254,15 @@ async function run() {
         // Get All Approved Tuitions
 
         app.get("/approved-tuitions", async (req, res) => {
-            const { searchParams, sort, page = 1, limit = 6 } = req.query;
+            const {
+                searchParams,
+                sort,
+                page = 1,
+                limit = 6,
+                classLevel,
+                subject,
+                location,
+            } = req.query;
 
             const currentPage = parseInt(page);
             const itemsPerPage = parseInt(limit);
@@ -281,6 +289,19 @@ async function run() {
                 ];
             }
 
+            // Advanced Filters
+
+            if (classLevel) {
+                query.classLevel = classLevel;
+            }
+
+            if (subject) {
+                query.subject = subject;
+            }
+
+            if (location) {
+                query.location = location;
+            }
             // Sort
             let sortOption = {
                 createdAt: -1,
