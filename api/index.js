@@ -5,11 +5,11 @@ import jwt from "jsonwebtoken";
 import Stripe from "stripe";
 import { ObjectId } from "mongodb";
 
-import { client, connectToMongo } from "./db.js";
+import { client, connectToMongo } from "../db.js";
 
-import verifyToken from "./middlewares/verifyToken.js";
-import verifyFirebaseToken from "./middlewares/verifyFirebaseToken.js";
-import verifyAdmin from "./middlewares/verifyAdmin.js";
+import verifyToken from "../middlewares/verifyToken.js";
+import verifyFirebaseToken from "../middlewares/verifyFirebaseToken.js";
+import verifyAdmin from "../middlewares/verifyAdmin.js";
 
 dotenv.config();
 
