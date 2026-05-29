@@ -53,6 +53,10 @@ async function run() {
             .db("etuitionbdDB")
             .collection("reviews");
 
+        const bookmarksCollection = client
+            .db("etuitionbdDB")
+            .collection("bookmarks");
+
         // =========================================================
         // USERS APIs
         // =========================================================
@@ -667,6 +671,56 @@ async function run() {
                     message: "Failed to load reviews",
                 });
             }
+        });
+
+        // =========================================================
+        // BOOKMARKS APIs
+        // =========================================================
+
+        // Create Bookmark
+
+        app.post("/bookmarks", verifyToken, async (req, res) => {
+            const bookmark = req.body;
+
+            const existing = await bookmarksCollection.findOne({
+                tuitionId: bookmark.tuitionId,
+
+                tutorEmail: bookmark.tutorEmail,
+            });
+
+            if (existing) {
+                return res.status(400).send({
+                    message: "Already Bookmarked",
+                });
+            }
+
+            const result = await bookmarksCollection.insertOne(bookmark);
+
+            res.send(result);
+        });
+
+        // Get Bookmarks
+
+        app.get("/bookmarks/:email", verifyToken, async (req, res) => {
+            const email = req.params.email;
+
+            const result = await bookmarksCollection
+                .find({
+                    tutorEmail: email,
+                })
+                .toArray();
+
+            res.send(result);
+        });
+
+        // Delete Bookmark
+
+        app.delete("/bookmarks/:id", verifyToken, async (req, res) => {
+            const result = await bookmarksCollection.deleteOne({
+                _id: new ObjectId(req.params.id),
+            });
+
+            res.send(result);
         });
 
         // =========================================================
