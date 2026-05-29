@@ -254,13 +254,62 @@ async function run() {
         // Get All Approved Tuitions
 
         app.get("/approved-tuitions", async (req, res) => {
-            const result = await tuitionsCollection
-                .find({
-                    status: "approved",
-                })
-                .sort({
+            const { searchParams, sort } = req.query;
+
+            let query = {
+                status: "approved",
+            };
+
+            // Search by subject or location
+            if (searchParams) {
+                query.$or = [
+                    {
+                        subject: {
+                            $regex: searchParams,
+                            $options: "i",
+                        },
+                    },
+                    {
+                        location: {
+                            $regex: searchParams,
+                            $options: "i",
+                        },
+                    },
+                ];
+            }
+
+            let sortOption = {
+                createdAt: -1,
+            };
+
+            // Sorting
+            if (sort === "budget-low") {
+                sortOption = {
+                    budget: 1,
+                };
+            }
+
+            if (sort === "budget-high") {
+                sortOption = {
+                    budget: -1,
+                };
+            }
+
+            if (sort === "newest") {
+                sortOption = {
                     createdAt: -1,
-                })
+                };
+            }
+
+            if (sort === "oldest") {
+                sortOption = {
+                    createdAt: 1,
+                };
+            }
+
+            const result = await tuitionsCollection
+                .find(query)
+                .sort(sortOption)
                 .toArray();
 
             res.send(result);
