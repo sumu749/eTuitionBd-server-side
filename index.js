@@ -596,16 +596,67 @@ async function run() {
 
             res.send(result);
         });
+
         // JWT API
 
         app.post("/jwt", async (req, res) => {
-            const { email } = req.body;
+            try {
+                const { email } = req.body;
 
-            const token = jwt.sign({ email }, process.env.JWT_SECRET, {
-                expiresIn: "7d",
-            });
+                if (!email) {
+                    return res.status(400).send({
+                        success: false,
+                        message: "Email is required",
+                    });
+                }
 
-            res.send({ token });
+                // Fetch user role and details
+                const user = await usersCollection.findOne({ email });
+
+                if (!user) {
+                    return res.status(404).send({
+                        success: false,
+                        message: "User not found",
+                    });
+                }
+
+                // Determine access level based on role
+                const accessLevels = {
+                    admin: 3,
+                    tutor: 2,
+                    student: 1,
+                };
+
+                const accessLevel = accessLevels[user.role] || 0;
+
+                const payload = {
+                    email: user.email,
+                    role: user.role,
+                    accessLevel,
+                    userId: user._id.toString(),
+                    issuedAt: Math.floor(Date.now() / 1000),
+                };
+
+                const token = jwt.sign(payload, process.env.JWT_SECRET, {
+                    expiresIn: "7d",
+                });
+
+                res.send({
+                    success: true,
+                    token,
+                    user: {
+                        email: user.email,
+                        role: user.role,
+                        accessLevel,
+                    },
+                });
+            } catch (error) {
+                console.error("JWT creation error:", error);
+                res.status(500).send({
+                    success: false,
+                    message: "Failed to create JWT",
+                });
+            }
         });
 
         // Protected Test Route
