@@ -254,13 +254,16 @@ async function run() {
         // Get All Approved Tuitions
 
         app.get("/approved-tuitions", async (req, res) => {
-            const { searchParams, sort } = req.query;
+            const { searchParams, sort, page = 1, limit = 6 } = req.query;
+
+            const currentPage = parseInt(page);
+            const itemsPerPage = parseInt(limit);
 
             let query = {
                 status: "approved",
             };
 
-            // Search by subject or location
+            // Search
             if (searchParams) {
                 query.$or = [
                     {
@@ -278,11 +281,11 @@ async function run() {
                 ];
             }
 
+            // Sort
             let sortOption = {
                 createdAt: -1,
             };
 
-            // Sorting
             if (sort === "budget-low") {
                 sortOption = {
                     budget: 1,
@@ -307,12 +310,22 @@ async function run() {
                 };
             }
 
+            // Total count
+            const total = await tuitionsCollection.countDocuments(query);
+
+            // Paginated data
             const result = await tuitionsCollection
                 .find(query)
                 .sort(sortOption)
+                .skip((currentPage - 1) * itemsPerPage)
+                .limit(itemsPerPage)
                 .toArray();
 
-            res.send(result);
+            res.send({
+                tuitions: result,
+                totalPages: Math.ceil(total / itemsPerPage),
+                currentPage,
+            });
         });
 
         // Get Tuition By ID
