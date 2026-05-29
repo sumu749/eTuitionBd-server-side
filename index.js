@@ -2,11 +2,12 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
-import { MongoClient, ServerApiVersion } from "mongodb";
+import { client, connectToMongo } from "./db.js";
 import verifyFirebaseToken from "./middlewares/verifyFirebaseToken.js";
 import verifyToken from "./middlewares/verifyToken.js";
 import { ObjectId } from "mongodb";
 import Stripe from "stripe";
+import verifyAdmin from "./middlewares/verifyAdmin.js";
 
 dotenv.config();
 
@@ -42,23 +43,10 @@ app.get("/", (req, res) => {
 });
 
 // MongoDB
-const client = new MongoClient(mongoUri, {
-    serverApi: {
-        version: ServerApiVersion.v1,
-        strict: true,
-        deprecationErrors: true,
-    },
-});
 
 async function run() {
     try {
-        await client.connect();
-
-        await client.db("admin").command({
-            ping: 1,
-        });
-
-        console.log("MongoDB Connected Successfully");
+        await connectToMongo();
 
         const usersCollection = client.db("etuitionbdDB").collection("users");
 
@@ -100,7 +88,7 @@ async function run() {
         });
 
         // Get All Users
-        app.get("/users", async (req, res) => {
+        app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
             const result = await usersCollection.find().toArray();
 
             res.send(result);
@@ -352,27 +340,32 @@ async function run() {
 
         // Admin Update User Role
 
-        app.patch("/users/role/:id", verifyToken, async (req, res) => {
-            const id = req.params.id;
-            const role = req.body.role;
+        app.patch(
+            "/users/role/:id",
+            verifyToken,
+            verifyAdmin,
+            async (req, res) => {
+                const id = req.params.id;
+                const role = req.body.role;
 
-            const result = await usersCollection.updateOne(
-                {
-                    _id: new ObjectId(id),
-                },
-                {
-                    $set: {
-                        role,
+                const result = await usersCollection.updateOne(
+                    {
+                        _id: new ObjectId(id),
                     },
-                },
-            );
+                    {
+                        $set: {
+                            role,
+                        },
+                    },
+                );
 
-            res.send(result);
-        });
+                res.send(result);
+            },
+        );
 
         // Admin Delete User
 
-        app.delete("/users/:id", verifyToken, async (req, res) => {
+        app.delete("/users/:id", verifyToken, verifyAdmin, async (req, res) => {
             const result = await usersCollection.deleteOne({
                 _id: new ObjectId(req.params.id),
             });
@@ -382,7 +375,7 @@ async function run() {
 
         // Get All Tuitions (Admin)
 
-        app.get("/tuitions", verifyToken, async (req, res) => {
+        app.get("/tuitions", verifyToken, verifyAdmin, async (req, res) => {
             const result = await tuitionsCollection
                 .find()
                 .sort({ createdAt: -1 })
@@ -393,27 +386,32 @@ async function run() {
 
         // Admin Update Tuition Status
 
-        app.patch("/tuitions/status/:id", verifyToken, async (req, res) => {
-            const id = req.params.id;
-            const { status } = req.body;
+        app.patch(
+            "/tuitions/status/:id",
+            verifyToken,
+            verifyAdmin,
+            async (req, res) => {
+                const id = req.params.id;
+                const { status } = req.body;
 
-            const result = await tuitionsCollection.updateOne(
-                {
-                    _id: new ObjectId(id),
-                },
-                {
-                    $set: {
-                        status,
+                const result = await tuitionsCollection.updateOne(
+                    {
+                        _id: new ObjectId(id),
                     },
-                },
-            );
+                    {
+                        $set: {
+                            status,
+                        },
+                    },
+                );
 
-            res.send(result);
-        });
+                res.send(result);
+            },
+        );
 
         // Admin Analytics
 
-        app.get("/admin-stats", verifyToken, async (req, res) => {
+        app.get("/admin-stats", verifyToken, verifyAdmin, async (req, res) => {
             const totalUsers = await usersCollection.countDocuments();
 
             const totalStudents = await usersCollection.countDocuments({
@@ -490,7 +488,7 @@ async function run() {
 
         // Transactions APIs
 
-        app.get("/transactions", verifyToken, async (req, res) => {
+        app.get("/transactions", verifyToken, verifyAdmin, async (req, res) => {
             const result = await transactionsCollection
                 .find()
                 .sort({
