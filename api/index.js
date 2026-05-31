@@ -591,6 +591,60 @@ async function run() {
             }
         });
 
+        // Get All Transactions (Admin)
+        app.get("/transactions", verifyToken, verifyAdmin, async (req, res) => {
+            try {
+                const result = await transactionsCollection
+                    .find()
+                    .sort({
+                        paymentDate: -1,
+                    })
+                    .toArray();
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({
+                    message: "Failed to load transactions",
+                });
+            }
+        });
+
+        // Get Transaction Details
+        app.get("/transactions/:id", verifyToken, async (req, res) => {
+            try {
+                const id = req.params.id;
+
+                const transaction = await transactionsCollection.findOne({
+                    _id: new ObjectId(id),
+                });
+
+                if (!transaction) {
+                    return res.status(404).send({
+                        message: "Transaction not found",
+                    });
+                }
+
+                const requesterEmail = req.decoded.email;
+                const isAdmin = req.decoded.accessLevel >= 3;
+
+                if (
+                    !isAdmin &&
+                    requesterEmail !== transaction.studentEmail &&
+                    requesterEmail !== transaction.tutorEmail
+                ) {
+                    return res.status(403).send({
+                        message: "Forbidden Access",
+                    });
+                }
+
+                res.send(transaction);
+            } catch (error) {
+                res.status(500).send({
+                    message: "Failed to load transaction details",
+                });
+            }
+        });
+
         // Get Payments
         app.get("/payments", verifyToken, async (req, res) => {
             try {
