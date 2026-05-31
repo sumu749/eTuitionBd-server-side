@@ -764,9 +764,9 @@ async function run() {
         // JWT APIs
         // =========================================================
 
-        app.post("/jwt", async (req, res) => {
+        app.post("/jwt", verifyFirebaseToken, async (req, res) => {
             try {
-                const { email } = req.body;
+                const email = req.decoded.email;
 
                 const user = await usersCollection.findOne({
                     email,
