@@ -1312,16 +1312,21 @@ async function run() {
         // Create Bookmark
         app.post("/bookmarks", verifyToken, async (req, res) => {
             try {
-                const { tuitionId } = req.body;
+                const data = req.body;
+
+                // Accept tuitionId from either field
+                const tuitionId = data.tuitionId || data._id || data.id;
 
                 if (!tuitionId) {
                     return res.status(400).send({
+                        success: false,
                         message: "tuitionId is required",
                     });
                 }
 
                 const tutorEmail = req.decoded.email;
                 const bookmark = {
+                    ...data,
                     tuitionId: tuitionId.toString(),
                     tutorEmail,
                     bookmarkedAt: new Date(),
@@ -1329,14 +1334,14 @@ async function run() {
 
                 const existing = await bookmarksCollection.findOne({
                     tuitionId: bookmark.tuitionId,
-                    tutorEmail: bookmark.tutorEmail,
+                    tutorEmail,
                 });
 
                 if (existing) {
-                    return res.send({
+                    return res.status(200).send({
                         success: true,
                         message: "Already Bookmarked",
-                        bookmark: existing,
+                        _id: existing._id,
                     });
                 }
 
@@ -1344,10 +1349,12 @@ async function run() {
 
                 res.status(201).send({
                     success: true,
-                    result,
+                    _id: result.insertedId,
                 });
             } catch (error) {
+                console.error("Bookmark creation error:", error);
                 res.status(500).send({
+                    success: false,
                     message: "Failed to create bookmark",
                 });
             }
