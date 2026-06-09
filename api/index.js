@@ -685,6 +685,13 @@ async function run() {
                         });
                     }
 
+                    if (updatePayload.status === "approved") {
+                        return res.status(400).send({
+                            message:
+                                "Applications can only be approved through the payment flow",
+                        });
+                    }
+
                     // Validate that the status value is one of the allowed values
                     const allowedStatuses = ["approved", "rejected", "pending"];
                     if (!allowedStatuses.includes(updatePayload.status)) {
@@ -856,7 +863,38 @@ async function run() {
         // Save Transaction
         app.post("/transactions", verifyToken, async (req, res) => {
             try {
-                const result = await transactionsCollection.insertOne(req.body);
+                const txData = req.body;
+
+                // Verify the application belongs to this student
+                const application = await applicationsCollection.findOne({
+                    _id: new ObjectId(txData.applicationId),
+                    studentEmail: req.decoded.email,
+                });
+
+                if (!application) {
+                    return res.status(403).send({ message: "Forbidden" });
+                }
+
+                const session = client.startSession();
+
+                let result;
+
+                await session.withTransaction(async () => {
+                    const txResult = await transactionsCollection.insertOne(
+                        txData,
+                        { session },
+                    );
+
+                    await applicationsCollection.updateOne(
+                        { _id: application._id },
+                        { $set: { status: "approved" } },
+                        { session },
+                    );
+
+                    result = txResult;
+                });
+
+                await session.endSession();
 
                 res.send(result);
             } catch (error) {
