@@ -1366,6 +1366,57 @@ async function run() {
             }
         });
 
+        // Delete Bookmark by query or request body.
+        // Supports DELETE /bookmarks?id=... or DELETE /bookmarks?tuitionId=...
+        app.delete("/bookmarks", verifyToken, async (req, res) => {
+            try {
+                const { id, tuitionId } = req.query;
+                const bodyTuitionId = req.body?.tuitionId;
+
+                let filter = null;
+
+                if (id) {
+                    filter = { _id: new ObjectId(id) };
+                } else if (tuitionId) {
+                    filter = {
+                        tuitionId: tuitionId.toString(),
+                        tutorEmail: req.decoded.email,
+                    };
+                } else if (bodyTuitionId) {
+                    filter = {
+                        tuitionId: bodyTuitionId.toString(),
+                        tutorEmail: req.decoded.email,
+                    };
+                } else {
+                    return res.status(400).send({
+                        success: false,
+                        message:
+                            "Bookmark id or tuitionId is required to delete a bookmark",
+                    });
+                }
+
+                const result = await bookmarksCollection.deleteOne(filter);
+
+                if (result.deletedCount === 0) {
+                    return res.status(404).send({
+                        success: false,
+                        message: "Bookmark not found",
+                    });
+                }
+
+                res.send({
+                    success: true,
+                    deletedCount: result.deletedCount,
+                });
+            } catch (error) {
+                console.error("Bookmark deletion error:", error);
+                res.status(500).send({
+                    success: false,
+                    message: "Failed to delete bookmark",
+                });
+            }
+        });
+
         // Delete Bookmark
         app.delete("/bookmarks/:id", verifyToken, async (req, res) => {
             const result = await bookmarksCollection.deleteOne({
