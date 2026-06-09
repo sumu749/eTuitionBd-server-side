@@ -1371,12 +1371,13 @@ async function run() {
         app.delete("/bookmarks", verifyToken, async (req, res) => {
             try {
                 const { id, tuitionId } = req.query;
+                const bodyId = req.body?.id;
                 const bodyTuitionId = req.body?.tuitionId;
 
                 let filter = null;
 
-                if (id) {
-                    filter = { _id: new ObjectId(id) };
+                if (id || bodyId) {
+                    filter = { _id: new ObjectId(id || bodyId) };
                 } else if (tuitionId) {
                     filter = {
                         tuitionId: tuitionId.toString(),
