@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import Stripe from "stripe";
 import { ObjectId } from "mongodb";
+import rateLimit from "express-rate-limit";
 
 import { client, connectToMongo } from "../db.js";
 
@@ -22,6 +23,23 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Rate limiting
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20,
+    message: { message: "Too many requests, please try again later" },
+});
+
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 200,
+});
+
+// Apply rate limiters
+app.use("/jwt", authLimiter);
+app.use("/users", authLimiter);
+app.use(apiLimiter); // global fallback
 
 // Root Route
 app.get("/", (req, res) => {
