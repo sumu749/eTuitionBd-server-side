@@ -31,13 +31,14 @@ let transactionsCollection;
 let reviewsCollection;
 let bookmarksCollection;
 let collectionsReady = false;
+let resolveDbReady;
+const dbReadyPromise = new Promise((resolve) => {
+    resolveDbReady = resolve;
+});
 
-const dbReady = (req, res, next) => {
+const dbReady = async (req, res, next) => {
     if (!collectionsReady) {
-        return res.status(503).send({
-            message:
-                "Service temporarily unavailable. Database is still initializing.",
-        });
+        await dbReadyPromise;
     }
     next();
 };
@@ -334,8 +335,15 @@ async function run() {
             );
         }
 
-        await createIndexes();
         collectionsReady = true;
+        if (resolveDbReady) {
+            resolveDbReady();
+        }
+        console.log("Collections ready and service is now accepting requests");
+
+        createIndexes().catch((error) => {
+            console.error("Failed to create indexes:", error);
+        });
 
         // =========================================================
         // USERS APIs
