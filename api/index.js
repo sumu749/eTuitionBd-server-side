@@ -1313,27 +1313,25 @@ async function run() {
         app.post("/bookmarks", verifyToken, async (req, res) => {
             try {
                 const data = req.body;
+                const tutorEmail = req.decoded.email;
 
-                // Accept tuitionId from either field
-                const tuitionId = data.tuitionId || data._id || data.id;
+                // Accept tuitionId from any common field name
+                let tuitionId =
+                    data.tuitionId || data._id || data.id || data.tuitionID;
 
                 if (!tuitionId) {
+                    // If no tuitionId provided, reject with clear error
                     return res.status(400).send({
                         success: false,
-                        message: "tuitionId is required",
+                        message: "tuitionId is required in request body",
                     });
                 }
 
-                const tutorEmail = req.decoded.email;
-                const bookmark = {
-                    ...data,
-                    tuitionId: tuitionId.toString(),
-                    tutorEmail,
-                    bookmarkedAt: new Date(),
-                };
+                const tuitionIdStr = tuitionId.toString();
 
+                // Check if already bookmarked
                 const existing = await bookmarksCollection.findOne({
-                    tuitionId: bookmark.tuitionId,
+                    tuitionId: tuitionIdStr,
                     tutorEmail,
                 });
 
@@ -1345,6 +1343,14 @@ async function run() {
                     });
                 }
 
+                // Create new bookmark with all provided data plus system fields
+                const bookmark = {
+                    ...data,
+                    tuitionId: tuitionIdStr,
+                    tutorEmail,
+                    bookmarkedAt: new Date(),
+                };
+
                 const result = await bookmarksCollection.insertOne(bookmark);
 
                 res.status(201).send({
@@ -1355,7 +1361,7 @@ async function run() {
                 console.error("Bookmark creation error:", error);
                 res.status(500).send({
                     success: false,
-                    message: "Failed to create bookmark",
+                    message: "Failed to create bookmark: " + error.message,
                 });
             }
         });
