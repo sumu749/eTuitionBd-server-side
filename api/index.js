@@ -147,6 +147,85 @@ async function run() {
             }
         };
 
+        const userPublicProjection = {
+            name: 1,
+            email: 1,
+            photoURL: 1,
+            subject: 1,
+            university: 1,
+            bio: 1,
+            location: 1,
+            role: 1,
+        };
+
+        const tuitionPublicProjection = {
+            _id: 1,
+            subject: 1,
+            classLevel: 1,
+            budget: 1,
+            location: 1,
+            status: 1,
+            studentEmail: 1,
+            createdAt: 1,
+        };
+
+        const hydrateApplications = async (applications) => {
+            if (!Array.isArray(applications) || applications.length === 0) {
+                return [];
+            }
+
+            const userEmails = new Set();
+            const tuitionIds = new Set();
+
+            applications.forEach((application) => {
+                if (application.studentEmail) {
+                    userEmails.add(application.studentEmail);
+                }
+                if (application.tutorEmail) {
+                    userEmails.add(application.tutorEmail);
+                }
+                if (application.tuitionId) {
+                    tuitionIds.add(application.tuitionId.toString());
+                }
+            });
+
+            const users = await usersCollection
+                .find({ email: { $in: [...userEmails] } })
+                .project(userPublicProjection)
+                .toArray();
+
+            const userMap = users.reduce((acc, user) => {
+                acc[user.email] = user;
+                return acc;
+            }, {});
+
+            const validTuitionObjectIds = [...tuitionIds].reduce((acc, id) => {
+                try {
+                    acc.push(new ObjectId(id));
+                } catch {
+                    // ignore invalid tuition IDs
+                }
+                return acc;
+            }, []);
+
+            const tuitions = await tuitionsCollection
+                .find({ _id: { $in: validTuitionObjectIds } })
+                .project(tuitionPublicProjection)
+                .toArray();
+
+            const tuitionMap = tuitions.reduce((acc, tuition) => {
+                acc[tuition._id.toString()] = tuition;
+                return acc;
+            }, {});
+
+            return applications.map((application) => ({
+                ...application,
+                student: userMap[application.studentEmail] || null,
+                tutor: userMap[application.tutorEmail] || null,
+                tuition: tuitionMap[application.tuitionId?.toString()] || null,
+            }));
+        };
+
         // =========================================================
         // USERS APIs
         // =========================================================
@@ -599,11 +678,48 @@ async function run() {
         // Create Application
         app.post("/applications", verifyToken, async (req, res) => {
             try {
-                const application = req.body;
+                const {
+                    tuitionId,
+                    qualifications,
+                    experience,
+                    expectedSalary,
+                } = req.body;
+                const tutorEmail = req.decoded.email;
+
+                if (!tuitionId) {
+                    return res.status(400).send({
+                        message: "tuitionId is required",
+                    });
+                }
+
+                let tuition;
+                try {
+                    tuition = await tuitionsCollection.findOne({
+                        _id: new ObjectId(tuitionId),
+                    });
+                } catch {
+                    return res.status(400).send({
+                        message: "Invalid tuitionId",
+                    });
+                }
+
+                if (!tuition) {
+                    return res.status(404).send({
+                        message: "Tuition not found",
+                    });
+                }
+
+                const studentEmail = tuition.studentEmail;
+
+                if (studentEmail === tutorEmail) {
+                    return res.status(400).send({
+                        message: "You cannot apply to your own tuition",
+                    });
+                }
 
                 const existing = await applicationsCollection.findOne({
-                    tuitionId: application.tuitionId,
-                    tutorEmail: application.tutorEmail,
+                    tuitionId: tuitionId.toString(),
+                    tutorEmail,
                 });
 
                 if (existing) {
@@ -611,6 +727,17 @@ async function run() {
                         message: "Already Applied",
                     });
                 }
+
+                const application = {
+                    tuitionId: tuitionId.toString(),
+                    studentEmail,
+                    tutorEmail,
+                    qualifications,
+                    experience,
+                    expectedSalary,
+                    status: "pending",
+                    appliedAt: new Date(),
+                };
 
                 const result =
                     await applicationsCollection.insertOne(application);
@@ -652,7 +779,9 @@ async function run() {
                     });
                 }
 
-                res.send(application);
+                const [hydrated] = await hydrateApplications([application]);
+
+                res.send(hydrated);
             } catch (error) {
                 res.status(500).send({
                     message: "Failed to load application",
@@ -671,9 +800,12 @@ async function run() {
                     });
                 }
 
-                const result = await applicationsCollection
+                const applications = await applicationsCollection
                     .find({ studentEmail: email })
+                    .sort({ appliedAt: -1 })
                     .toArray();
+
+                const result = await hydrateApplications(applications);
 
                 res.send(result);
             } catch (error) {
@@ -694,9 +826,12 @@ async function run() {
                     });
                 }
 
-                const result = await applicationsCollection
+                const applications = await applicationsCollection
                     .find({ tutorEmail: email })
+                    .sort({ appliedAt: -1 })
                     .toArray();
+
+                const result = await hydrateApplications(applications);
 
                 res.send(result);
             } catch (error) {
@@ -896,13 +1031,15 @@ async function run() {
                     });
                 }
 
-                const result = await applicationsCollection
+                const applications = await applicationsCollection
                     .find({
                         tutorEmail: email,
                         status: "approved",
                     })
                     .sort({ appliedAt: -1 })
                     .toArray();
+
+                const result = await hydrateApplications(applications);
 
                 res.send(result);
             } catch (error) {
