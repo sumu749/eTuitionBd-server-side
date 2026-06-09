@@ -58,6 +58,28 @@ async function run() {
             .collection("bookmarks");
 
         // =========================================================
+        // OWNERSHIP CHECK HELPER
+        // =========================================================
+
+        /**
+         * Fetches a document by _id from the given collection.
+         * Returns null if the id is invalid or the document doesn't exist.
+         * Used by mutation routes to verify ownership before proceeding.
+         *
+         * @param {Collection} collection - MongoDB collection reference
+         * @param {string} id - The document _id string from req.params
+         * @returns {object|null} The document or null
+         */
+        const getDocumentById = async (collection, id) => {
+            try {
+                return await collection.findOne({ _id: new ObjectId(id) });
+            } catch {
+                // ObjectId constructor throws if id is malformed
+                return null;
+            }
+        };
+
+        // =========================================================
         // USERS APIs
         // =========================================================
 
@@ -134,7 +156,6 @@ async function run() {
         });
 
         // Get Tutor By ID
-
         app.get("/users/tutor/:id", async (req, res) => {
             try {
                 const id = req.params.id;
@@ -302,21 +323,15 @@ async function run() {
                 };
 
                 if (sort === "budget-low") {
-                    sortOption = {
-                        budget: 1,
-                    };
+                    sortOption = { budget: 1 };
                 }
 
                 if (sort === "budget-high") {
-                    sortOption = {
-                        budget: -1,
-                    };
+                    sortOption = { budget: -1 };
                 }
 
                 if (sort === "oldest") {
-                    sortOption = {
-                        createdAt: 1,
-                    };
+                    sortOption = { createdAt: 1 };
                 }
 
                 const total = await tuitionsCollection.countDocuments(query);
@@ -369,12 +384,8 @@ async function run() {
                 }
 
                 const result = await tuitionsCollection
-                    .find({
-                        studentEmail: email,
-                    })
-                    .sort({
-                        createdAt: -1,
-                    })
+                    .find({ studentEmail: email })
+                    .sort({ createdAt: -1 })
                     .toArray();
 
                 res.send(result);
@@ -386,19 +397,36 @@ async function run() {
         });
 
         // Update Tuition
+        // FIXED: Added ownership check — only the student who created this
+        // tuition can update it. Fetch first, compare studentEmail, then update.
         app.patch("/tuitions/:id", verifyToken, async (req, res) => {
             try {
                 const id = req.params.id;
 
+                // Step 1: Fetch the tuition document
+                const tuition = await getDocumentById(tuitionsCollection, id);
+
+                // Step 2: Document must exist
+                if (!tuition) {
+                    return res.status(404).send({
+                        message: "Tuition not found",
+                    });
+                }
+
+                // Step 3: Only the student who owns this tuition can edit it
+                if (tuition.studentEmail !== req.decoded.email) {
+                    return res.status(403).send({
+                        message:
+                            "Forbidden: You do not have permission to edit this tuition",
+                    });
+                }
+
+                // Step 4: Ownership confirmed — proceed with update
                 const updatedData = req.body;
 
                 const result = await tuitionsCollection.updateOne(
-                    {
-                        _id: new ObjectId(id),
-                    },
-                    {
-                        $set: updatedData,
-                    },
+                    { _id: new ObjectId(id) },
+                    { $set: updatedData },
                 );
 
                 res.send(result);
@@ -410,10 +438,33 @@ async function run() {
         });
 
         // Delete Tuition
+        // FIXED: Added ownership check — only the student who created this
+        // tuition can delete it. Admins use a separate admin route.
         app.delete("/tuitions/:id", verifyToken, async (req, res) => {
             try {
+                const id = req.params.id;
+
+                // Step 1: Fetch the tuition document
+                const tuition = await getDocumentById(tuitionsCollection, id);
+
+                // Step 2: Document must exist
+                if (!tuition) {
+                    return res.status(404).send({
+                        message: "Tuition not found",
+                    });
+                }
+
+                // Step 3: Only the student who owns this tuition can delete it
+                if (tuition.studentEmail !== req.decoded.email) {
+                    return res.status(403).send({
+                        message:
+                            "Forbidden: You do not have permission to delete this tuition",
+                    });
+                }
+
+                // Step 4: Ownership confirmed — proceed with delete
                 const result = await tuitionsCollection.deleteOne({
-                    _id: new ObjectId(req.params.id),
+                    _id: new ObjectId(id),
                 });
 
                 res.send(result);
@@ -429,9 +480,7 @@ async function run() {
             try {
                 const result = await tuitionsCollection
                     .find()
-                    .sort({
-                        createdAt: -1,
-                    })
+                    .sort({ createdAt: -1 })
                     .toArray();
 
                 res.send(result);
@@ -442,7 +491,7 @@ async function run() {
             }
         });
 
-        // Update Tuition Status
+        // Update Tuition Status (Admin only)
         app.patch(
             "/tuitions/status/:id",
             verifyToken,
@@ -453,14 +502,8 @@ async function run() {
                     const { status } = req.body;
 
                     const result = await tuitionsCollection.updateOne(
-                        {
-                            _id: new ObjectId(id),
-                        },
-                        {
-                            $set: {
-                                status,
-                            },
-                        },
+                        { _id: new ObjectId(id) },
+                        { $set: { status } },
                     );
 
                     res.send(result);
@@ -503,7 +546,44 @@ async function run() {
             }
         });
 
-        // Get Applications By Student
+        // Get Single Application by ID (used by Checkout page)
+        app.get("/application/:id", verifyToken, async (req, res) => {
+            try {
+                const id = req.params.id;
+
+                const application = await getDocumentById(
+                    applicationsCollection,
+                    id,
+                );
+
+                if (!application) {
+                    return res.status(404).send({
+                        message: "Application not found",
+                    });
+                }
+
+                // Only the student who owns this tuition or the tutor who applied
+                // can view a single application detail
+                const requesterEmail = req.decoded.email;
+
+                if (
+                    application.studentEmail !== requesterEmail &&
+                    application.tutorEmail !== requesterEmail
+                ) {
+                    return res.status(403).send({
+                        message: "Forbidden Access",
+                    });
+                }
+
+                res.send(application);
+            } catch (error) {
+                res.status(500).send({
+                    message: "Failed to load application",
+                });
+            }
+        });
+
+        // Get Applications By Student Email
         app.get("/applications/:email", verifyToken, async (req, res) => {
             try {
                 const email = req.params.email;
@@ -515,9 +595,7 @@ async function run() {
                 }
 
                 const result = await applicationsCollection
-                    .find({
-                        studentEmail: email,
-                    })
+                    .find({ studentEmail: email })
                     .toArray();
 
                 res.send(result);
@@ -528,8 +606,203 @@ async function run() {
             }
         });
 
-        // Get Tutor Applications
+        // Get Tutor Applications By Tutor Email
         app.get("/tutor-applications/:email", verifyToken, async (req, res) => {
+            try {
+                const email = req.params.email;
+
+                if (email !== req.decoded.email) {
+                    return res.status(403).send({
+                        message: "Forbidden Access",
+                    });
+                }
+
+                const result = await applicationsCollection
+                    .find({ tutorEmail: email })
+                    .toArray();
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({
+                    message: "Failed to load tutor applications",
+                });
+            }
+        });
+
+        // Update Application
+        // FIXED: Role-aware ownership split.
+        //
+        // Two actors use this route for different purposes:
+        //
+        // ACTOR A — Tutor editing their own pending application content:
+        //   Allowed fields: qualifications, experience, expectedSalary
+        //   Ownership check: application.tutorEmail === req.decoded.email
+        //
+        // ACTOR B — Student approving or rejecting an application on their tuition:
+        //   Allowed fields: status
+        //   Ownership check: application.studentEmail === req.decoded.email
+        //
+        // Any other combination returns 403.
+        app.patch("/applications/:id", verifyToken, async (req, res) => {
+            try {
+                const id = req.params.id;
+                const updatePayload = req.body;
+                const requesterEmail = req.decoded.email;
+
+                // Step 1: Fetch the application document
+                const application = await getDocumentById(
+                    applicationsCollection,
+                    id,
+                );
+
+                // Step 2: Document must exist
+                if (!application) {
+                    return res.status(404).send({
+                        message: "Application not found",
+                    });
+                }
+
+                // Step 3: Determine which actor is making this request
+                // and enforce the correct ownership rule.
+
+                const isStatusUpdate =
+                    "status" in updatePayload &&
+                    Object.keys(updatePayload).length === 1;
+
+                const isContentUpdate =
+                    !isStatusUpdate &&
+                    (updatePayload.qualifications !== undefined ||
+                        updatePayload.experience !== undefined ||
+                        updatePayload.expectedSalary !== undefined);
+
+                if (isStatusUpdate) {
+                    // Only the student who owns the parent tuition can
+                    // approve or reject an application
+                    if (application.studentEmail !== requesterEmail) {
+                        return res.status(403).send({
+                            message:
+                                "Forbidden: Only the student who posted this tuition can approve or reject applications",
+                        });
+                    }
+
+                    // Validate that the status value is one of the allowed values
+                    const allowedStatuses = ["approved", "rejected", "pending"];
+                    if (!allowedStatuses.includes(updatePayload.status)) {
+                        return res.status(400).send({
+                            message: "Invalid status value",
+                        });
+                    }
+                } else if (isContentUpdate) {
+                    // Only the tutor who submitted this application can
+                    // edit its content, and only while it is still pending
+                    if (application.tutorEmail !== requesterEmail) {
+                        return res.status(403).send({
+                            message:
+                                "Forbidden: You can only edit your own application",
+                        });
+                    }
+
+                    if (application.status !== "pending") {
+                        return res.status(400).send({
+                            message:
+                                "Cannot edit an application that has already been reviewed",
+                        });
+                    }
+
+                    // Whitelist only the fields a tutor is allowed to change.
+                    // This prevents a tutor from injecting other fields
+                    // like studentEmail or tuitionId into the update.
+                    const allowedFields = [
+                        "qualifications",
+                        "experience",
+                        "expectedSalary",
+                    ];
+
+                    const sanitizedPayload = {};
+                    for (const field of allowedFields) {
+                        if (updatePayload[field] !== undefined) {
+                            sanitizedPayload[field] = updatePayload[field];
+                        }
+                    }
+
+                    // Replace the full updatePayload with the sanitized version
+                    Object.keys(updatePayload).forEach(
+                        (k) => delete updatePayload[k],
+                    );
+                    Object.assign(updatePayload, sanitizedPayload);
+                } else {
+                    // The request body doesn't match either expected pattern —
+                    // reject it entirely
+                    return res.status(400).send({
+                        message: "Invalid update payload",
+                    });
+                }
+
+                // Step 4: Ownership and validation confirmed — proceed
+                const result = await applicationsCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: updatePayload },
+                );
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({
+                    message: "Failed to update application",
+                });
+            }
+        });
+
+        // Delete Application
+        // FIXED: Only the tutor who submitted this application can delete it.
+        // Students cannot delete tutor applications — they can only reject them
+        // via the status update route above.
+        app.delete("/applications/:id", verifyToken, async (req, res) => {
+            try {
+                const id = req.params.id;
+
+                // Step 1: Fetch the application document
+                const application = await getDocumentById(
+                    applicationsCollection,
+                    id,
+                );
+
+                // Step 2: Document must exist
+                if (!application) {
+                    return res.status(404).send({
+                        message: "Application not found",
+                    });
+                }
+
+                // Step 3: Only the tutor who owns this application can delete it
+                if (application.tutorEmail !== req.decoded.email) {
+                    return res.status(403).send({
+                        message:
+                            "Forbidden: You can only delete your own application",
+                    });
+                }
+
+                // Step 4: Ownership confirmed — proceed with delete
+                const result = await applicationsCollection.deleteOne({
+                    _id: new ObjectId(id),
+                });
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({
+                    message: "Failed to delete application",
+                });
+            }
+        });
+
+        // =========================================================
+        // ONGOING TUITIONS API
+        // =========================================================
+
+        // Get Ongoing Tuitions for a Tutor
+        // Returns all applications with status "approved" for this tutor.
+        // This was previously missing — fixes the 404 on TutorDashboard
+        // and OngoingApplications pages.
+        app.get("/ongoing-tuitions/:email", verifyToken, async (req, res) => {
             try {
                 const email = req.params.email;
 
@@ -542,13 +815,15 @@ async function run() {
                 const result = await applicationsCollection
                     .find({
                         tutorEmail: email,
+                        status: "approved",
                     })
+                    .sort({ appliedAt: -1 })
                     .toArray();
 
                 res.send(result);
             } catch (error) {
                 res.status(500).send({
-                    message: "Failed to load tutor applications",
+                    message: "Failed to load ongoing tuitions",
                 });
             }
         });
@@ -564,7 +839,7 @@ async function run() {
 
                 const paymentIntent = await stripe.paymentIntents.create({
                     amount: parseInt(amount * 100),
-                    currency: "bdt",
+                    currency: "usd",
                     payment_method_types: ["card"],
                 });
 
@@ -596,9 +871,7 @@ async function run() {
             try {
                 const result = await transactionsCollection
                     .find()
-                    .sort({
-                        paymentDate: -1,
-                    })
+                    .sort({ paymentDate: -1 })
                     .toArray();
 
                 res.send(result);
@@ -645,7 +918,7 @@ async function run() {
             }
         });
 
-        // Get Payments
+        // Get Payments for a Student
         app.get("/payments", verifyToken, async (req, res) => {
             try {
                 const email = req.query.email;
@@ -657,12 +930,8 @@ async function run() {
                 }
 
                 const result = await transactionsCollection
-                    .find({
-                        studentEmail: email,
-                    })
-                    .sort({
-                        paymentDate: -1,
-                    })
+                    .find({ studentEmail: email })
+                    .sort({ paymentDate: -1 })
                     .toArray();
 
                 res.send(result);
@@ -673,14 +942,60 @@ async function run() {
             }
         });
 
+        // Get Revenue for a Tutor
+        // Was previously missing — fixes the 404 on Revenue page.
+        app.get("/revenue/:email", verifyToken, async (req, res) => {
+            try {
+                const email = req.params.email;
+
+                if (email !== req.decoded.email) {
+                    return res.status(403).send({
+                        message: "Forbidden Access",
+                    });
+                }
+
+                const result = await transactionsCollection
+                    .find({ tutorEmail: email })
+                    .sort({ paymentDate: -1 })
+                    .toArray();
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({
+                    message: "Failed to load revenue",
+                });
+            }
+        });
+
         // =========================================================
         // REVIEWS APIs
         // =========================================================
 
         // Create Review
+        // FIXED: Added duplicate review check — a student can only review
+        // a tutor once. Prevents rating manipulation.
         app.post("/reviews", verifyToken, async (req, res) => {
             try {
-                const result = await reviewsCollection.insertOne(req.body);
+                const reviewData = req.body;
+
+                // Prevent duplicate reviews from the same student
+                const existing = await reviewsCollection.findOne({
+                    tutorEmail: reviewData.tutorEmail,
+                    studentEmail: req.decoded.email,
+                });
+
+                if (existing) {
+                    return res.status(400).send({
+                        message:
+                            "You have already reviewed this tutor. You can only submit one review per tutor.",
+                    });
+                }
+
+                // Ensure the review is submitted as the authenticated user,
+                // not as a spoofed identity
+                reviewData.studentEmail = req.decoded.email;
+
+                const result = await reviewsCollection.insertOne(reviewData);
 
                 res.send(result);
             } catch (error) {
@@ -690,18 +1005,14 @@ async function run() {
             }
         });
 
-        // Get Reviews
+        // Get Reviews for a Tutor
         app.get("/reviews/:email", async (req, res) => {
             try {
                 const email = req.params.email;
 
                 const result = await reviewsCollection
-                    .find({
-                        tutorEmail: email,
-                    })
-                    .sort({
-                        createdAt: -1,
-                    })
+                    .find({ tutorEmail: email })
+                    .sort({ createdAt: -1 })
                     .toArray();
 
                 res.send(result);
@@ -717,13 +1028,11 @@ async function run() {
         // =========================================================
 
         // Create Bookmark
-
         app.post("/bookmarks", verifyToken, async (req, res) => {
             const bookmark = req.body;
 
             const existing = await bookmarksCollection.findOne({
                 tuitionId: bookmark.tuitionId,
-
                 tutorEmail: bookmark.tutorEmail,
             });
 
@@ -739,21 +1048,17 @@ async function run() {
         });
 
         // Get Bookmarks
-
         app.get("/bookmarks/:email", verifyToken, async (req, res) => {
             const email = req.params.email;
 
             const result = await bookmarksCollection
-                .find({
-                    tutorEmail: email,
-                })
+                .find({ tutorEmail: email })
                 .toArray();
 
             res.send(result);
         });
 
         // Delete Bookmark
-
         app.delete("/bookmarks/:id", verifyToken, async (req, res) => {
             const result = await bookmarksCollection.deleteOne({
                 _id: new ObjectId(req.params.id),
@@ -788,15 +1093,27 @@ async function run() {
                     await applicationsCollection.countDocuments();
 
                 const approvedApplications = await applicationsCollection
-                    .find({
-                        status: "approved",
-                    })
+                    .find({ status: "approved" })
                     .toArray();
 
                 const totalRevenue = approvedApplications.reduce(
                     (sum, app) => sum + Number(app.expectedSalary || 0),
                     0,
                 );
+
+                // Calculate new users this month
+                const startOfMonth = new Date();
+                startOfMonth.setDate(1);
+                startOfMonth.setHours(0, 0, 0, 0);
+
+                const newUsers = await usersCollection.countDocuments({
+                    createdAt: { $gte: startOfMonth },
+                });
+
+                // Pending reviews = tuitions still waiting for admin approval
+                const pendingReviews = await tuitionsCollection.countDocuments({
+                    status: "pending",
+                });
 
                 res.send({
                     totalUsers,
@@ -806,6 +1123,8 @@ async function run() {
                     totalTuitions,
                     totalApplications,
                     totalRevenue,
+                    newUsers,
+                    pendingReviews,
                 });
             } catch (error) {
                 res.status(500).send({
@@ -822,9 +1141,7 @@ async function run() {
             try {
                 const email = req.decoded.email;
 
-                const user = await usersCollection.findOne({
-                    email,
-                });
+                const user = await usersCollection.findOne({ email });
 
                 if (!user) {
                     return res.status(404).send({
@@ -881,12 +1198,6 @@ async function run() {
                 email: req.decoded.email,
             });
         });
-
-        // if (!process.env.VERCEL) {
-        //     app.listen(port, () => {
-        //         console.log(`Server Running on Port ${port}`);
-        //     });
-        // }
     } catch (error) {
         console.error(error);
     }

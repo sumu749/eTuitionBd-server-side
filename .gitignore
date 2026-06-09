@@ -9,3 +9,4 @@ firebase/*.json
 # Node modules
 node_modules/
 .vercel
+.env*
