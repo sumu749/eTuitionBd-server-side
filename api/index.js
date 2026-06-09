@@ -1181,6 +1181,35 @@ async function run() {
             }
         });
 
+        // Refresh JWT — issues a new token with updated user info in case their role or other details have changed since the last token was issued. Requires a valid existing token to prevent abuse.
+
+        app.post("/refresh-token", verifyToken, async (req, res) => {
+            try {
+                const user = await usersCollection.findOne({
+                    email: req.decoded.email,
+                });
+
+                if (!user)
+                    return res.status(404).send({ message: "User not found" });
+
+                const accessLevels = { admin: 3, tutor: 2, student: 1 };
+                const payload = {
+                    email: user.email,
+                    role: user.role,
+                    accessLevel: accessLevels[user.role] || 0,
+                    userId: user._id.toString(),
+                };
+
+                const token = jwt.sign(payload, process.env.JWT_SECRET, {
+                    expiresIn: "7d",
+                });
+
+                res.send({ success: true, token });
+            } catch {
+                res.status(500).send({ message: "Refresh failed" });
+            }
+        });
+
         // =========================================================
         // PRIVATE ROUTES
         // =========================================================
