@@ -136,15 +136,20 @@ async function run() {
             try {
                 const { limit } = req.query;
 
-                let cursor = usersCollection.find({
-                    role: "tutor",
-                });
-
-                if (limit) {
-                    cursor = cursor.limit(parseInt(limit));
-                }
-
-                const result = await cursor.toArray();
+                const result = await usersCollection
+                    .find({ role: "tutor" })
+                    .project({
+                        name: 1,
+                        email: 1,
+                        photoURL: 1,
+                        subject: 1,
+                        university: 1,
+                        bio: 1,
+                        location: 1,
+                        role: 1,
+                    })
+                    .limit(parseInt(limit) || 50)
+                    .toArray();
 
                 res.send(result);
             } catch (error) {
@@ -195,9 +200,10 @@ async function run() {
             try {
                 const email = req.params.email;
 
-                const result = await usersCollection.findOne({
-                    email,
-                });
+                const result = await usersCollection.findOne(
+                    { email },
+                    { projection: { password: 0 } },
+                );
 
                 res.send(result);
             } catch (error) {
@@ -210,7 +216,10 @@ async function run() {
         // Get All Users (Admin)
         app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
             try {
-                const result = await usersCollection.find().toArray();
+                const result = await usersCollection
+                    .find()
+                    .project({ password: 0 })
+                    .toArray();
 
                 res.send(result);
             } catch (error) {
