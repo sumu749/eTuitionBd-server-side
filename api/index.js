@@ -75,6 +75,56 @@ async function run() {
             .db("etuitionbdDB")
             .collection("bookmarks");
 
+        const normalizeIndexKey = (key) =>
+            Object.entries(key)
+                .map(([field, order]) => `${field}:${order}`)
+                .join(",");
+
+        async function ensureIndex(collection, key, options = {}) {
+            const desiredKey = normalizeIndexKey(key);
+            const existingIndexes = await collection.indexes();
+
+            const matchingIndex = existingIndexes.find(
+                (index) => normalizeIndexKey(index.key) === desiredKey,
+            );
+
+            if (matchingIndex) {
+                if (options.unique && !matchingIndex.unique) {
+                    console.warn(
+                        `Index on ${collection.collectionName}(${desiredKey}) already exists without unique constraint. Skipping unique creation.`,
+                    );
+                }
+                return;
+            }
+
+            await collection.createIndex(key, options);
+        }
+
+        async function createIndexes() {
+            await ensureIndex(usersCollection, { email: 1 }, { unique: true });
+            await ensureIndex(usersCollection, { role: 1 });
+            await ensureIndex(tuitionsCollection, { studentEmail: 1 });
+            await ensureIndex(tuitionsCollection, { status: 1 });
+            await ensureIndex(tuitionsCollection, { status: 1, createdAt: -1 });
+            await ensureIndex(applicationsCollection, { tutorEmail: 1 });
+            await ensureIndex(applicationsCollection, { studentEmail: 1 });
+            await ensureIndex(
+                applicationsCollection,
+                { tuitionId: 1, tutorEmail: 1 },
+                { unique: true },
+            );
+            await ensureIndex(transactionsCollection, { studentEmail: 1 });
+            await ensureIndex(transactionsCollection, { tutorEmail: 1 });
+            await ensureIndex(reviewsCollection, { tutorEmail: 1 });
+            await ensureIndex(
+                reviewsCollection,
+                { tutorEmail: 1, studentEmail: 1 },
+                { unique: true },
+            );
+        }
+
+        await createIndexes();
+
         // =========================================================
         // OWNERSHIP CHECK HELPER
         // =========================================================
