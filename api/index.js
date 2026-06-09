@@ -1377,7 +1377,14 @@ async function run() {
                 let filter = null;
 
                 if (id || bodyId) {
-                    filter = { _id: new ObjectId(id || bodyId) };
+                    try {
+                        filter = { _id: new ObjectId(id || bodyId) };
+                    } catch (err) {
+                        return res.status(400).send({
+                            success: false,
+                            message: "Invalid bookmark ID format",
+                        });
+                    }
                 } else if (tuitionId) {
                     filter = {
                         tuitionId: tuitionId.toString(),
