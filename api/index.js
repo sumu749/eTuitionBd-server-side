@@ -24,6 +24,24 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 app.use(cors());
 app.use(express.json());
 
+let usersCollection;
+let tuitionsCollection;
+let applicationsCollection;
+let transactionsCollection;
+let reviewsCollection;
+let bookmarksCollection;
+let collectionsReady = false;
+
+const dbReady = (req, res, next) => {
+    if (!collectionsReady) {
+        return res.status(503).send({
+            message:
+                "Service temporarily unavailable. Database is still initializing.",
+        });
+    }
+    next();
+};
+
 // Rate limiting
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -46,6 +64,199 @@ app.get("/", (req, res) => {
     res.send("eTuitionBd Server Running");
 });
 
+app.use(dbReady);
+
+// Known public routes are registered immediately so they can't return 404 while the DB is initializing.
+app.get("/approved-tuitions", async (req, res) => {
+    try {
+        const {
+            searchParams,
+            sort,
+            page = 1,
+            limit = 6,
+            classLevel,
+            subject,
+            location,
+        } = req.query;
+
+        const currentPage = parseInt(page);
+        const itemsPerPage = parseInt(limit);
+
+        const query = {
+            status: "approved",
+        };
+
+        if (searchParams) {
+            query.$or = [
+                {
+                    subject: {
+                        $regex: searchParams,
+                        $options: "i",
+                    },
+                },
+                {
+                    location: {
+                        $regex: searchParams,
+                        $options: "i",
+                    },
+                },
+            ];
+        }
+
+        if (classLevel) {
+            query.classLevel = classLevel;
+        }
+
+        if (subject) {
+            query.subject = subject;
+        }
+
+        if (location) {
+            query.location = location;
+        }
+
+        const total = await tuitionsCollection.countDocuments(query);
+
+        const result = await tuitionsCollection
+            .find(query)
+            .sort(
+                sort === "budget-low"
+                    ? { budget: 1 }
+                    : sort === "budget-high"
+                      ? { budget: -1 }
+                      : sort === "oldest"
+                        ? { createdAt: 1 }
+                        : { createdAt: -1 },
+            )
+            .skip((currentPage - 1) * itemsPerPage)
+            .limit(itemsPerPage)
+            .toArray();
+
+        res.send({
+            tuitions: result,
+            totalPages: Math.ceil(total / itemsPerPage),
+            currentPage,
+        });
+    } catch (error) {
+        res.status(500).send({
+            message: "Failed to load tuitions",
+        });
+    }
+});
+
+app.get("/bookmarks", verifyToken, async (req, res) => {
+    const email = req.query.email;
+
+    if (!email) {
+        return res.status(400).send({
+            message: "email query parameter is required",
+        });
+    }
+
+    const result = await bookmarksCollection
+        .find({ tutorEmail: email })
+        .toArray();
+
+    res.send(result);
+});
+
+app.get("/bookmarks/:email", verifyToken, async (req, res) => {
+    const email = req.params.email;
+
+    const result = await bookmarksCollection
+        .find({ tutorEmail: email })
+        .toArray();
+
+    res.send(result);
+});
+
+const getDocumentById = async (collection, id) => {
+    try {
+        return await collection.findOne({ _id: new ObjectId(id) });
+    } catch {
+        return null;
+    }
+};
+
+const userPublicProjection = {
+    name: 1,
+    email: 1,
+    photoURL: 1,
+    subject: 1,
+    university: 1,
+    bio: 1,
+    location: 1,
+    role: 1,
+};
+
+const tuitionPublicProjection = {
+    _id: 1,
+    subject: 1,
+    classLevel: 1,
+    budget: 1,
+    location: 1,
+    status: 1,
+    studentEmail: 1,
+    createdAt: 1,
+};
+
+const hydrateApplications = async (applications) => {
+    if (!Array.isArray(applications) || applications.length === 0) {
+        return [];
+    }
+
+    const userEmails = new Set();
+    const tuitionIds = new Set();
+
+    applications.forEach((application) => {
+        if (application.studentEmail) {
+            userEmails.add(application.studentEmail);
+        }
+        if (application.tutorEmail) {
+            userEmails.add(application.tutorEmail);
+        }
+        if (application.tuitionId) {
+            tuitionIds.add(application.tuitionId.toString());
+        }
+    });
+
+    const users = await usersCollection
+        .find({ email: { $in: [...userEmails] } })
+        .project(userPublicProjection)
+        .toArray();
+
+    const userMap = users.reduce((acc, user) => {
+        acc[user.email] = user;
+        return acc;
+    }, {});
+
+    const validTuitionObjectIds = [...tuitionIds].reduce((acc, id) => {
+        try {
+            acc.push(new ObjectId(id));
+        } catch {
+            // ignore invalid tuition IDs
+        }
+        return acc;
+    }, []);
+
+    const tuitions = await tuitionsCollection
+        .find({ _id: { $in: validTuitionObjectIds } })
+        .project(tuitionPublicProjection)
+        .toArray();
+
+    const tuitionMap = tuitions.reduce((acc, tuition) => {
+        acc[tuition._id.toString()] = tuition;
+        return acc;
+    }, {});
+
+    return applications.map((application) => ({
+        ...application,
+        student: userMap[application.studentEmail] || null,
+        tutor: userMap[application.tutorEmail] || null,
+        tuition: tuitionMap[application.tuitionId?.toString()] || null,
+    }));
+};
+
 async function run() {
     try {
         await connectToMongo();
@@ -53,27 +264,21 @@ async function run() {
         console.log("MongoDB Connected Successfully");
 
         // Collections
-        const usersCollection = client.db("etuitionbdDB").collection("users");
+        usersCollection = client.db("etuitionbdDB").collection("users");
 
-        const tuitionsCollection = client
-            .db("etuitionbdDB")
-            .collection("tuitions");
+        tuitionsCollection = client.db("etuitionbdDB").collection("tuitions");
 
-        const applicationsCollection = client
+        applicationsCollection = client
             .db("etuitionbdDB")
             .collection("applications");
 
-        const transactionsCollection = client
+        transactionsCollection = client
             .db("etuitionbdDB")
             .collection("transactions");
 
-        const reviewsCollection = client
-            .db("etuitionbdDB")
-            .collection("reviews");
+        reviewsCollection = client.db("etuitionbdDB").collection("reviews");
 
-        const bookmarksCollection = client
-            .db("etuitionbdDB")
-            .collection("bookmarks");
+        bookmarksCollection = client.db("etuitionbdDB").collection("bookmarks");
 
         const normalizeIndexKey = (key) =>
             Object.entries(key)
@@ -121,110 +326,16 @@ async function run() {
                 { tutorEmail: 1, studentEmail: 1 },
                 { unique: true },
             );
+            await ensureIndex(bookmarksCollection, { tutorEmail: 1 });
+            await ensureIndex(
+                bookmarksCollection,
+                { tuitionId: 1, tutorEmail: 1 },
+                { unique: true },
+            );
         }
 
         await createIndexes();
-
-        // =========================================================
-        // OWNERSHIP CHECK HELPER
-        // =========================================================
-
-        /**
-         * Fetches a document by _id from the given collection.
-         * Returns null if the id is invalid or the document doesn't exist.
-         * Used by mutation routes to verify ownership before proceeding.
-         *
-         * @param {Collection} collection - MongoDB collection reference
-         * @param {string} id - The document _id string from req.params
-         * @returns {object|null} The document or null
-         */
-        const getDocumentById = async (collection, id) => {
-            try {
-                return await collection.findOne({ _id: new ObjectId(id) });
-            } catch {
-                // ObjectId constructor throws if id is malformed
-                return null;
-            }
-        };
-
-        const userPublicProjection = {
-            name: 1,
-            email: 1,
-            photoURL: 1,
-            subject: 1,
-            university: 1,
-            bio: 1,
-            location: 1,
-            role: 1,
-        };
-
-        const tuitionPublicProjection = {
-            _id: 1,
-            subject: 1,
-            classLevel: 1,
-            budget: 1,
-            location: 1,
-            status: 1,
-            studentEmail: 1,
-            createdAt: 1,
-        };
-
-        const hydrateApplications = async (applications) => {
-            if (!Array.isArray(applications) || applications.length === 0) {
-                return [];
-            }
-
-            const userEmails = new Set();
-            const tuitionIds = new Set();
-
-            applications.forEach((application) => {
-                if (application.studentEmail) {
-                    userEmails.add(application.studentEmail);
-                }
-                if (application.tutorEmail) {
-                    userEmails.add(application.tutorEmail);
-                }
-                if (application.tuitionId) {
-                    tuitionIds.add(application.tuitionId.toString());
-                }
-            });
-
-            const users = await usersCollection
-                .find({ email: { $in: [...userEmails] } })
-                .project(userPublicProjection)
-                .toArray();
-
-            const userMap = users.reduce((acc, user) => {
-                acc[user.email] = user;
-                return acc;
-            }, {});
-
-            const validTuitionObjectIds = [...tuitionIds].reduce((acc, id) => {
-                try {
-                    acc.push(new ObjectId(id));
-                } catch {
-                    // ignore invalid tuition IDs
-                }
-                return acc;
-            }, []);
-
-            const tuitions = await tuitionsCollection
-                .find({ _id: { $in: validTuitionObjectIds } })
-                .project(tuitionPublicProjection)
-                .toArray();
-
-            const tuitionMap = tuitions.reduce((acc, tuition) => {
-                acc[tuition._id.toString()] = tuition;
-                return acc;
-            }, {});
-
-            return applications.map((application) => ({
-                ...application,
-                student: userMap[application.studentEmail] || null,
-                tutor: userMap[application.tutorEmail] || null,
-                tuition: tuitionMap[application.tuitionId?.toString()] || null,
-            }));
-        };
+        collectionsReady = true;
 
         // =========================================================
         // USERS APIs
@@ -418,95 +529,6 @@ async function run() {
             } catch (error) {
                 res.status(500).send({
                     message: "Failed to create tuition",
-                });
-            }
-        });
-
-        // Get Approved Tuitions
-        app.get("/approved-tuitions", async (req, res) => {
-            try {
-                const {
-                    searchParams,
-                    sort,
-                    page = 1,
-                    limit = 6,
-                    classLevel,
-                    subject,
-                    location,
-                } = req.query;
-
-                const currentPage = parseInt(page);
-                const itemsPerPage = parseInt(limit);
-
-                let query = {
-                    status: "approved",
-                };
-
-                // Search
-                if (searchParams) {
-                    query.$or = [
-                        {
-                            subject: {
-                                $regex: searchParams,
-                                $options: "i",
-                            },
-                        },
-                        {
-                            location: {
-                                $regex: searchParams,
-                                $options: "i",
-                            },
-                        },
-                    ];
-                }
-
-                // Filters
-                if (classLevel) {
-                    query.classLevel = classLevel;
-                }
-
-                if (subject) {
-                    query.subject = subject;
-                }
-
-                if (location) {
-                    query.location = location;
-                }
-
-                // Sort
-                let sortOption = {
-                    createdAt: -1,
-                };
-
-                if (sort === "budget-low") {
-                    sortOption = { budget: 1 };
-                }
-
-                if (sort === "budget-high") {
-                    sortOption = { budget: -1 };
-                }
-
-                if (sort === "oldest") {
-                    sortOption = { createdAt: 1 };
-                }
-
-                const total = await tuitionsCollection.countDocuments(query);
-
-                const result = await tuitionsCollection
-                    .find(query)
-                    .sort(sortOption)
-                    .skip((currentPage - 1) * itemsPerPage)
-                    .limit(itemsPerPage)
-                    .toArray();
-
-                res.send({
-                    tuitions: result,
-                    totalPages: Math.ceil(total / itemsPerPage),
-                    currentPage,
-                });
-            } catch (error) {
-                res.status(500).send({
-                    message: "Failed to load tuitions",
                 });
             }
         });
@@ -1295,17 +1317,6 @@ async function run() {
             }
 
             const result = await bookmarksCollection.insertOne(bookmark);
-
-            res.send(result);
-        });
-
-        // Get Bookmarks
-        app.get("/bookmarks/:email", verifyToken, async (req, res) => {
-            const email = req.params.email;
-
-            const result = await bookmarksCollection
-                .find({ tutorEmail: email })
-                .toArray();
 
             res.send(result);
         });
