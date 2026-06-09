@@ -461,6 +461,58 @@ async function run() {
             }
         });
 
+        // PATCH /users/profile/:email — update own MongoDB profile fields
+        app.patch("/users/profile/:email", verifyToken, async (req, res) => {
+            try {
+                const email = req.params.email;
+                const isAdmin = req.decoded.accessLevel >= 3;
+
+                if (email !== req.decoded.email && !isAdmin) {
+                    return res
+                        .status(403)
+                        .send({
+                            message:
+                                "Forbidden: You can only update your own profile",
+                        });
+                }
+
+                const ALLOWED = [
+                    "name",
+                    "photoURL",
+                    "phone",
+                    "location",
+                    "subject",
+                    "university",
+                    "bio",
+                    "salary",
+                    "skills",
+                ];
+                const sanitized = {};
+                for (const field of ALLOWED) {
+                    if (req.body[field] !== undefined)
+                        sanitized[field] = req.body[field];
+                }
+
+                if (Object.keys(sanitized).length === 0) {
+                    return res
+                        .status(400)
+                        .send({ message: "No valid fields provided" });
+                }
+
+                const result = await usersCollection.updateOne(
+                    { email },
+                    { $set: sanitized },
+                );
+
+                if (result.matchedCount === 0)
+                    return res.status(404).send({ message: "User not found" });
+
+                res.send({ success: true, result });
+            } catch (error) {
+                res.status(500).send({ message: "Failed to update profile" });
+            }
+        });
+
         // Get All Users (Admin)
         app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
             try {
