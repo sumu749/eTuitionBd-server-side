@@ -50,10 +50,12 @@ export async function refreshToken(req, res, next) {
         if (authHeader && authHeader.startsWith("Bearer ")) {
             const token = authHeader.slice(7);
             try {
-                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+                    ignoreExpiration: true,
+                });
                 email = decoded.email;
             } catch (err) {
-                // token invalid or expired — we'll try Firebase idToken next
+                // invalid token — we'll try Firebase idToken next
             }
         }
 
