@@ -52,7 +52,7 @@ app.use(
         allowedHeaders: ["Content-Type", "Authorization"],
     }),
 );
-app.options("*", cors());
+app.options(/.*/, cors());
 app.use(express.json());
 
 app.use("/auth", authLimiter, authRoutes);
@@ -116,9 +116,11 @@ async function startServer() {
     });
 }
 
-startServer().catch((error) => {
-    console.error("Failed to start server:", error);
-    process.exit(1);
-});
+if (!process.env.VERCEL) {
+    startServer().catch((error) => {
+        console.error("Failed to start server:", error);
+        process.exit(1);
+    });
+}
 
 export default app;
