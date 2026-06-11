@@ -21,8 +21,12 @@ import {
     getApprovedTuitions,
     getOngoingTuitions,
 } from "./controllers/tuitionController.js";
-import { getApplicationById } from "./controllers/applicationController.js";
+import {
+    getApplicationById,
+    getTutorApplications,
+} from "./controllers/applicationController.js";
 import { getPublicTutors } from "./controllers/userController.js";
+import { getRevenueForTutor } from "./controllers/paymentController.js";
 import { createJwt, refreshToken } from "./controllers/authController.js";
 import { getAdminStats } from "./controllers/adminController.js";
 
@@ -41,7 +45,14 @@ const apiLimiter = rateLimit({
     max: 200,
 });
 
-app.use(cors());
+app.use(
+    cors({
+        origin: true,
+        methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization"],
+    }),
+);
+app.options("*", cors());
 app.use(express.json());
 
 app.use("/auth", authLimiter, authRoutes);
@@ -64,6 +75,13 @@ app.get(
 );
 app.get("/application/:id", apiLimiter, verifyToken, getApplicationById);
 app.get("/public-tutors", apiLimiter, getPublicTutors);
+app.get(
+    "/tutor-applications/:email",
+    apiLimiter,
+    verifyToken,
+    getTutorApplications,
+);
+app.get("/revenue/:email", apiLimiter, verifyToken, getRevenueForTutor);
 
 app.post("/jwt", authLimiter, verifyFirebaseToken, createJwt);
 app.post("/refresh-token", authLimiter, verifyToken, refreshToken);
