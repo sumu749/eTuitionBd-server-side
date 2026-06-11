@@ -86,7 +86,8 @@ app.get(
 app.get("/revenue/:email", apiLimiter, verifyToken, getRevenueForTutor);
 
 app.post("/jwt", authLimiter, verifyFirebaseToken, createJwt);
-app.post("/refresh-token", authLimiter, verifyToken, refreshToken);
+// Allow refresh-token with higher rate limit and flexible verification
+app.post("/refresh-token", apiLimiter, refreshToken);
 
 app.get("/admin-stats", apiLimiter, verifyToken, async (req, res, next) => {
     // delegate to new controller

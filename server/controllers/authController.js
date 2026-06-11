@@ -43,14 +43,45 @@ export async function createJwt(req, res, next) {
 
 export async function refreshToken(req, res, next) {
     try {
-        const { email } = req.body;
-        const user = await usersCollection.findOne({ email });
+        let email;
 
-        if (!user) {
-            return res.status(404).json({
+        // Try to verify an existing JWT from Authorization header
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            const token = authHeader.slice(7);
+            try {
+                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                email = decoded.email;
+            } catch (err) {
+                // token invalid or expired — we'll try Firebase idToken next
+            }
+        }
+
+        // If no email yet, try Firebase idToken from body (`idToken`)
+        if (!email) {
+            const idToken = req.body?.idToken || req.body?.firebaseIdToken;
+            if (idToken) {
+                try {
+                    const decoded = await admin.auth().verifyIdToken(idToken);
+                    email = decoded.email;
+                } catch (err) {
+                    // invalid firebase token
+                }
+            }
+        }
+
+        if (!email) {
+            return res.status(401).json({
                 success: false,
-                message: "User not found",
+                message: "Unauthorized: no valid token provided to refresh",
             });
+        }
+
+        const user = await usersCollection.findOne({ email });
+        if (!user) {
+            return res
+                .status(404)
+                .json({ success: false, message: "User not found" });
         }
 
         const payload = {
