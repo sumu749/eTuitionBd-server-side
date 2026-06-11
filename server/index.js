@@ -22,6 +22,7 @@ import {
     getOngoingTuitions,
 } from "./controllers/tuitionController.js";
 import { getApplicationById } from "./controllers/applicationController.js";
+import { getPublicTutors } from "./controllers/userController.js";
 import { createJwt, refreshToken } from "./controllers/authController.js";
 import { getAdminStats } from "./controllers/adminController.js";
 
@@ -62,6 +63,7 @@ app.get(
     getOngoingTuitions,
 );
 app.get("/application/:id", apiLimiter, verifyToken, getApplicationById);
+app.get("/public-tutors", apiLimiter, getPublicTutors);
 
 app.post("/jwt", authLimiter, verifyFirebaseToken, createJwt);
 app.post("/refresh-token", authLimiter, verifyToken, refreshToken);
