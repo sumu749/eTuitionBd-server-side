@@ -1,3 +1,6 @@
+// Archived legacy API — preserved for reference during migration.
+// This file is no longer used by the server. See `server/` for the new modular routes.
+
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -468,12 +471,10 @@ async function run() {
                 const isAdmin = req.decoded.accessLevel >= 3;
 
                 if (email !== req.decoded.email && !isAdmin) {
-                    return res
-                        .status(403)
-                        .send({
-                            message:
-                                "Forbidden: You can only update your own profile",
-                        });
+                    return res.status(403).send({
+                        message:
+                            "Forbidden: You can only update your own profile",
+                    });
                 }
 
                 const ALLOWED = [
@@ -1651,6 +1652,8 @@ async function run() {
     }
 }
 
-run().catch(console.dir);
+// Note: file kept for reference. Do not import or run this file.
 
-export default app;
+// run().catch(console.dir);
+
+export default null;
