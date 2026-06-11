@@ -65,6 +65,11 @@ app.use("/payments", apiLimiter, paymentRoutes);
 app.use("/reviews", apiLimiter, reviewRoutes);
 app.use("/bookmarks", apiLimiter, bookmarkRoutes);
 app.use("/admin", apiLimiter, adminRoutes);
+
+app.post("/jwt", authLimiter, createJwt);
+// Allow refresh-token with higher rate limit and flexible verification
+app.post("/refresh-token", apiLimiter, refreshToken);
+
 app.use(apiLimiter);
 
 // Legacy endpoint aliases (keeps backward compatibility with old clients)
@@ -84,10 +89,6 @@ app.get(
     getTutorApplications,
 );
 app.get("/revenue/:email", apiLimiter, verifyToken, getRevenueForTutor);
-
-app.post("/jwt", authLimiter, createJwt);
-// Allow refresh-token with higher rate limit and flexible verification
-app.post("/refresh-token", apiLimiter, refreshToken);
 
 app.get("/admin-stats", apiLimiter, verifyToken, async (req, res, next) => {
     // delegate to new controller
