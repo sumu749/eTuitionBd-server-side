@@ -6,8 +6,7 @@ import { createJwt, refreshToken } from "../controllers/authController.js";
 
 const router = express.Router();
 
-router.post("/jwt", body("idToken").notEmpty(), validateRequest, createJwt);
-
+router.post("/jwt", createJwt);
 router.post(
     "/refresh-token",
     body("email").isEmail(),

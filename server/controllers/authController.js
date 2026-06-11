@@ -11,9 +11,15 @@ const accessLevels = {
 
 export async function createJwt(req, res, next) {
     try {
-        const { idToken } = req.body;
-        const decoded = await admin.auth().verifyIdToken(idToken);
-        const email = decoded.email;
+        // req.decoded is already set by verifyFirebaseToken middleware
+        const email = req.decoded?.email;
+
+        if (!email) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized: email not found in token",
+            });
+        }
 
         const user = await usersCollection.findOne({ email });
 

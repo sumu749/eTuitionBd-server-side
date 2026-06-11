@@ -85,7 +85,7 @@ app.get(
 );
 app.get("/revenue/:email", apiLimiter, verifyToken, getRevenueForTutor);
 
-app.post("/jwt", authLimiter, verifyFirebaseToken, createJwt);
+app.post("/jwt", authLimiter, createJwt);
 // Allow refresh-token with higher rate limit and flexible verification
 app.post("/refresh-token", apiLimiter, refreshToken);
 
