@@ -56,7 +56,9 @@ app.options(/.*/, cors());
 app.use(express.json());
 
 app.use("/auth", authLimiter, authRoutes);
-app.use("/users", authLimiter, userRoutes);
+// Use the less-restrictive API limiter for user routes to avoid frequent 429s
+// caused by frontend polling (role checks, profile lookups, etc.).
+app.use("/users", apiLimiter, userRoutes);
 app.use("/tuitions", apiLimiter, tuitionRoutes);
 app.use("/applications", apiLimiter, applicationRoutes);
 app.use("/payments", apiLimiter, paymentRoutes);
